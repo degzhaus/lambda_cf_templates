@@ -1,0 +1,150 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'RDS instance.'
+
+Parameters:
+  AllocatedStorage:
+    Description: The allocated storage size, specified in gigabytes (GB).
+    Type: String
+    AllowedPattern: "^([2-9]?[0-9]{1}|[0-9]{3,4}|1[0-5]?[0-9]{3}|16[0-2]?[0-9]{2}|163[0-7]?[0-9]{1}|1638[0-4]?)$"
+    ConstraintDescription: "Value must be a valid number between 20-16384."
+  
+  AllowMajorVersionUpgrade:
+    Description: If you update the EngineVersion property to a version that's different from the DB instance's current major version, set this property to true.
+    Type: String
+    AllowedValues: [true, false]
+    ConstraintDescription: "Value must be boolean value."
+
+  AutoMinorVersionUpgrade:
+    Description: Indicates that minor engine upgrades are applied automatically to the DB instance during the maintenance window. The default value is true.
+    Type: String
+    AllowedValues: [true, false]
+    Default: true
+    ConstraintDescription: "Value must be boolean value."
+  
+  BackupRetentionPeriod:
+    Description: The number of days during which automatic DB snapshots are retained.
+    Type: String
+    AllowedPattern: "^([0-9]{1}|[1-2]{1}[0-9]{1}|3[0-5]{1})$"
+    ConstraintDescription: "Value must be a valid number between 0-35."
+
+  DBInstanceClass:
+    Description: The name of the compute and memory capacity classes of the DB instance.
+    Type: String
+    Default: db.t2.medium
+    
+  DBName:
+    Description: The name of the database inside the instance.
+    Type: String
+  
+  Engine:
+    Description: The name of the database engine to be used for this instance.
+    Type: String
+    AllowedValues: [mysql, mariadb, postgres]
+    ConstraintDescription: "Please specify either a mysql, mariadb, or postgres engine for the RDS instance."
+
+  MasterUsername:
+    Description: The master user name for the DB instance.
+    Type: String
+
+  MasterUserPassword:
+    Description: The master password for the DB instance.
+    Type: String
+    NoEcho: true
+
+  MultiAZ:
+    Description: Specifies if the database instance is a multiple Availability Zone deployment.
+    Type: String
+    AllowedValues: [true, false]
+    Default: true
+    ConstraintDescription: "Value must be boolean value."
+
+Resources:
+
+  RDSInstance:
+    Type: "AWS::RDS::DBInstance"
+    Properties:
+      AllocatedStorage: !Ref AllocatedStorage
+      AllowMajorVersionUpgrade: !Ref AllowMajorVersionUpgrade
+      AutoMinorVersionUpgrade: !Ref AutoMinorVersionUpgrade
+      BackupRetentionPeriod:  !Ref BackupRetentionPeriod
+      CopyTagsToSnapshot: true
+      DBInstanceClass: !Ref DBInstanceClass
+      DBName: !Ref DBName
+      Engine: !Ref Engine
+      DBSubnetGroupName:
+        Fn::ImportValue: !Join
+          - ""
+          - - !Select
+              - 0
+              - !Split
+                - "-"
+                - !Sub "${AWS::StackName}"
+            - "-db-subnet-group-name"
+      VPCSecurityGroups:
+        -
+          Fn::ImportValue: !Join
+            - ""
+            - - !Select
+                - 0
+                - !Split
+                  - "-"
+                  - !Sub "${AWS::StackName}"
+              - "-sg-id"
+      MasterUsername: !Ref MasterUsername
+      MasterUserPassword: !Ref MasterUserPassword
+      MonitoringInterval: 0 #Not using enhanced monitoring. Regular RDS monitoring is still enabled.
+      MultiAZ: !Ref MultiAZ
+      PubliclyAccessible: false 
+      StorageType: gp2
+      Tags:
+        - Key: Name
+          Value: !Join
+            - ""
+            - - !Select
+                - 0
+                - !Split
+                  - "-"
+                  - !Sub "${AWS::StackName}"
+              - "-db-"
+              - !Ref DBName
+
+Outputs:
+
+  DBInstanceIdentifier:
+    Description: The database instance identifier
+    Value: !Ref RDSInstance
+    Export:
+      Name: !Join
+        - ""
+        - - !Select
+            - 0
+            - !Split
+              - "-"
+              - !Sub "${AWS::StackName}"
+          - "-db"
+
+  DBEndpoint:
+    Description: The connection endpoint for the database.
+    Value: !GetAtt  RDSInstance.Endpoint.Address
+    Export:
+      Name: !Join
+        - ""
+        - - !Select
+            - 0
+            - !Split
+              - "-"
+              - !Sub "${AWS::StackName}"
+          - "-db-endpoint"
+
+  DBPort:
+    Description: The port number on which the database accepts connections.
+    Value: !GetAtt  RDSInstance.Endpoint.Port
+    Export:
+      Name: !Join
+        - ""
+        - - !Select
+            - 0
+            - !Split
+              - "-"
+              - !Sub "${AWS::StackName}"
+          - "-db-port"

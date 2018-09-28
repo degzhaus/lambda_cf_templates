@@ -1,0 +1,254 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: 'Network prerequisites.'
+
+Parameters:
+
+  VPCCidr:
+    Description: VPC CidrBlock
+    Type: String
+
+  PrivateSubnetAAvailabilityZone:
+    Description: PrivateSubnetA Availability Zone
+    Type: String
+
+  PrivateSubnetBAvailabilityZone:
+    Description: PrivateSubnetB Availability Zone
+    Type: String
+
+  PublicSubnetAAvailabilityZone:
+    Description: PublicSubnetA Availability Zone
+    Type: String
+
+  PrivateSubnetACidr:
+    Description: PrivateSubnetA CidrBlock
+    Type: String
+
+  PrivateSubnetBCidr:
+    Description: PrivateSubnetB CidrBlock
+    Type: String
+
+  PublicSubnetACidr:
+    Description: PublicSubnetACidr CidrBlock
+    Type: String
+
+Resources:
+
+  VPC:
+    Type: 'AWS::EC2::VPC'
+    Properties:
+      CidrBlock: !Ref VPCCidr
+
+  PrivateSubnetA:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Ref PrivateSubnetAAvailabilityZone
+      CidrBlock: !Ref PrivateSubnetACidr
+
+  PrivateSubnetB:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Ref PrivateSubnetBAvailabilityZone
+      CidrBlock: !Ref PrivateSubnetBCidr
+
+  PublicSubnetA:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref VPC
+      MapPublicIpOnLaunch: true
+      AvailabilityZone: !Ref PublicSubnetAAvailabilityZone
+      CidrBlock: !Ref PublicSubnetACidr
+
+  ElasticIPA:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+
+  GatewayToInternet:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  NATGateway:
+    DependsOn: GatewayToInternet
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId:
+        Fn::GetAtt:
+        - ElasticIPA
+        - AllocationId
+      SubnetId: !Ref PublicSubnetA
+
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: GatewayToInternet
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PrivateRoute:
+    Type: AWS::EC2::Route
+    DependsOn: NATGateway
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NATGateway
+
+  PublicSubnetARouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetA
+      RouteTableId: !Ref PublicRouteTable
+
+  PrivateSubnetARouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnetA
+      RouteTableId: !Ref PrivateRouteTable
+
+  PrivateSubnetBRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnetB
+      RouteTableId: !Ref PrivateRouteTable
+
+  SecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      VpcId: !Ref VPC
+      GroupName: !Join
+        - ""
+        - - !Select
+            - 0
+            - !Split
+              - "-"
+              - !Sub "${AWS::StackName}"
+          - "-sg-name"
+      GroupDescription: 'Security Group'
+      SecurityGroupEgress:
+      - CidrIp: 0.0.0.0/0
+        IpProtocol: -1
+
+  SecurityGroupIngress:
+    Type: 'AWS::EC2::SecurityGroupIngress'
+    Properties:
+      GroupId: !Ref SecurityGroup
+      IpProtocol: -1
+      SourceSecurityGroupId: !Ref SecurityGroup
+
+  DBSubnetGroup:
+    Type: "AWS::RDS::DBSubnetGroup"
+    Properties: 
+      DBSubnetGroupDescription: DB Subnet for RDS Instance
+      DBSubnetGroupName: !Join
+        - ""
+        - - !Select
+            - 0
+            - !Split
+              - "-"
+              - !Sub "${AWS::StackName}"
+          - "-db-subnet-group-name"
+      SubnetIds:
+        - !Ref PrivateSubnetA
+        - !Ref PrivateSubnetB
+
+Outputs:
+
+  VPC:
+    Description: VPC ID
+    Value: !Ref VPC
+    Export:
+      Name: !Join
+        - ""
+        - - !Select
+            - 0
+            - !Split
+              - "-"
+              - !Sub "${AWS::StackName}"
+          - "-vpc"
+
+  SecurityGroup:
+    Description: SecurityGroup.GroupId
+    Value: !GetAtt SecurityGroup.GroupId
+    Export:
+      Name: !Join
+        - ""
+        - - !Select
+            - 0
+            - !Split
+              - "-"
+              - !Sub "${AWS::StackName}"
+          - "-sg-id"
+
+  SubnetIds:
+    Description: VPC SubnetIds
+    Value: !Join
+      - ","
+      - - !Ref PrivateSubnetA
+        - !Ref PrivateSubnetB
+        - !Ref PublicSubnetA
+    Export:
+      Name: !Join
+        - ""
+        - - !Select
+            - 0
+            - !Split
+              - "-"
+              - !Sub "${AWS::StackName}"
+          - "-subnets"
+
+  SecurityGroupName:
+    Description: SecurityGroup.GroupName
+    Value: !Join
+      - ""
+      - - !Select
+          - 0
+          - !Split
+            - "-"
+            - !Sub "${AWS::StackName}"
+        - "-sg-name"
+    Export:
+      Name: !Join
+        - ""
+        - - !Select
+            - 0
+            - !Split
+              - "-"
+              - !Sub "${AWS::StackName}"
+          - "-sg-name"
+
+  DBSubnetGroupName:
+    Description: DBSubnetGroup.GroupName
+    Value: !Join
+      - ""
+      - - !Select
+          - 0
+          - !Split
+            - "-"
+            - !Sub "${AWS::StackName}"
+        - "-db-subnet-group-name"
+    Export:
+      Name: !Join
+        - ""
+        - - !Select
+            - 0
+            - !Split
+              - "-"
+              - !Sub "${AWS::StackName}"
+          - "-db-subnet-group-name"
