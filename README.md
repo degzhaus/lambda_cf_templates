@@ -1,4 +1,4 @@
-# Cloud Formation templates to create VPC prerequisites, RDS instance, and Lambda 
+# Cloud Formation templates to create VPC prerequisites, RDS instance, and Lambda function(s)
 
 Create Cloud Formation stacks:
  - vpc.yml - Network prerequisites to support RDS and Lambda
